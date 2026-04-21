@@ -159,25 +159,22 @@ const buildStatusHtml = ({ sessionId, customerEmail, customerName, amountTotal, 
       title: 'Bestilling modtaget',
       intro: 'Tak for din bestilling. Vi har registreret din ordre og behandler den nu.',
       message: 'Du vil modtage den endelige ordrebekræftelse, når designet er godkendt.',
-      icon: '📦',
     },
     'production-complete': {
       title: 'Produktion færdig',
       intro: 'Produktionen af din ordre er nu afsluttet.',
       message: 'Vi sender ordren videre til Danmark og opdaterer dig, når den er tjekket ind.',
-      icon: '🏭',
     },
     'denmark-checked': {
       title: 'Tjekket i Danmark',
       intro: 'Din ordre er nu tjekket ind i Danmark og klar til levering.',
       message: 'Vi sender dig en opdatering, når den er på vej til dig.',
-      icon: '✅',
+      icon: '',
     },
     'on-the-way': {
       title: 'På vej til dig',
       intro: 'Din ordre er nu på vej til din adresse.',
       message: 'Hold øje med din indbakke for leveringsopdateringer og sporingslink.',
-      icon: '🚚',
     },
   };
 
@@ -409,7 +406,6 @@ const buildFakturaHtml = ({ sessionId, customerEmail, customerName, amountTotal,
         <div class="party-detail">
           tradydk.dk<br>
           support@tradydk.dk<br>
-          ${cvr ? `CVR-nr.: ${cvr}` : 'CVR-nr.: [INDSÆT CVR]'}
         </div>
       </div>
       <div class="party">

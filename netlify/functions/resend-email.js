@@ -1,4 +1,4 @@
-const { sendReceiptEmail } = require('./send-order-email.js');
+const { sendFakturaEmail } = require('./send-order-email.js');
 
 const getBaseUrl = (event) => {
   if (process.env.BASE_URL) return process.env.BASE_URL.replace(/\/$/, '');
@@ -18,7 +18,18 @@ const handler = async (event) => {
   }
 
   try {
-    const { sessionId } = JSON.parse(event.body);
+    const body = JSON.parse(event.body);
+    const { sessionId, emailType } = body;
+
+    // If full orderData is passed directly (from admin dashboard faktura button)
+    if (body.customerEmail && body.lineItems) {
+      const response = await sendFakturaEmail(body);
+      return {
+        statusCode: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ success: true, messageId: response.id }),
+      };
+    }
 
     if (!sessionId) {
       return {
@@ -32,13 +43,12 @@ const handler = async (event) => {
     const baseUrl = getBaseUrl(event);
     const sessionRes = await fetch(`${baseUrl}/.netlify/functions/get-session?session_id=${sessionId}`);
     if (!sessionRes.ok) {
-      const body = await sessionRes.text();
-      throw new Error(`Could not fetch session data: ${sessionRes.status} ${sessionRes.statusText} ${body}`);
+      const resBody = await sessionRes.text();
+      throw new Error(`Could not fetch session data: ${sessionRes.status} ${sessionRes.statusText} ${resBody}`);
     }
 
     const sessionData = await sessionRes.json();
 
-    // Transform session data to match sendReceiptEmail format
     const orderData = {
       sessionId,
       customerEmail: sessionData.customerEmail,
@@ -52,26 +62,19 @@ const handler = async (event) => {
       shippingAddress: sessionData.shippingAddress,
     };
 
-    const response = await sendReceiptEmail(orderData);
+    const response = await sendFakturaEmail(orderData);
 
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        success: true,
-        message: 'Email sendt igen!',
-        messageId: response.id,
-      }),
+      body: JSON.stringify({ success: true, message: 'Faktura sendt!', messageId: response.id }),
     };
   } catch (error) {
     console.error('Resend email fejl:', error);
     return {
       statusCode: 500,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        success: false,
-        error: error.message,
-      }),
+      body: JSON.stringify({ success: false, error: error.message }),
     };
   }
 };

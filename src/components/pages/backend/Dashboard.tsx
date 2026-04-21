@@ -393,30 +393,37 @@ const AdminDashboard = () => {
       setSuccess(`${label} sendt til ${order.customerEmail}`); setTimeout(() => setSuccess(""), 4000)
     } catch (err: any) { setError(err.message || 'Kunne ikke sende mail') } finally { setActionLoading(null) }
   }
-  const handleSendFaktura = async (order: StripeOrder) => {
-    setActionLoading(order.id)
-    try {
-      const sessionRes = await fetch(`/.netlify/functions/get-session?session_id=${order.sessionId}`)
-      if (!sessionRes.ok) throw new Error('Kunne ikke hente session data')
-      const sessionData = await sessionRes.json()
-      const orderData = {
-        sessionId: order.sessionId,
-        customerEmail: sessionData.customerEmail || order.customerEmail,
-        customerName: sessionData.customerName || order.customerName,
-        amountTotal: sessionData.amountTotal || order.amountTotal,
-        lineItems: (sessionData.lineItems || order.lineItems || []).map((item: any) => ({
-          name: item.description || item.name,
-          quantity: item.quantity,
-          price: item.amount || item.price,
-        })),
-        shippingAddress: sessionData.shippingAddress || order.shippingAddress,
-        emailType: 'faktura',
+    const handleSendFaktura = async (order: StripeOrder) => {
+      setActionLoading(order.id)
+      try {
+        const orderData = {
+          sessionId: order.sessionId,
+          customerEmail: order.customerEmail,
+          customerName: order.customerName,
+          amountTotal: order.amountTotal,
+          lineItems: (order.lineItems || []).map((item) => ({
+            name: item.name,
+            quantity: item.quantity,
+            price: item.price,
+          })),
+          shippingAddress: order.shippingAddress || null,
+          emailType: 'faktura',
+        }
+        const res = await fetch('/.netlify/functions/resend-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(orderData),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || 'Kunne ikke sende faktura')
+        setSuccess(` Faktura sendt til ${order.customerEmail}`)
+        setTimeout(() => setSuccess(""), 4000)
+      } catch (err: any) {
+        setError(err.message || 'Kunne ikke sende faktura')
+      } finally {
+        setActionLoading(null)
       }
-      const res = await fetch('/.netlify/functions/resend-email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(orderData) })
-      const data = await res.json(); if (!res.ok) throw new Error(data.error || 'Kunne ikke sende faktura')
-      setSuccess(`📄 Faktura sendt til ${order.customerEmail}`); setTimeout(() => setSuccess(""), 4000)
-    } catch (err: any) { setError(err.message || 'Kunne ikke sende faktura') } finally { setActionLoading(null) }
-  }
+    }
   const handleApproveCustomization = async (id: string) => {
     try { await updateDoc(doc(db, 'customizations', id), { status: 'approved', updated_at: new Date().toISOString() }); setSuccess("✓ Design godkendt!"); setTimeout(() => setSuccess(""), 3000); loadCustomizations() }
     catch (err: any) { setError(err.message) }
