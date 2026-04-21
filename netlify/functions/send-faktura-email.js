@@ -13,7 +13,6 @@ const generateFakturaNumber = (sessionId) => {
   return `FAK-${new Date().getFullYear()}-${clean.slice(0, 8).toUpperCase()}`;
 };
 
-// ─── ORDER CONFIRMATION EMAIL ──────────────────────────────────────────────
 const buildOrderHtml = ({ sessionId, customerEmail, customerName, amountTotal, lineItems, shippingAddress }) => {
   const orderNumber = generateOrderNumber(sessionId);
   const currentDate = new Date().toLocaleDateString('da-DK', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -147,7 +146,6 @@ const buildOrderHtml = ({ sessionId, customerEmail, customerName, amountTotal, l
 </html>`;
 };
 
-// ─── STATUS UPDATE EMAIL ───────────────────────────────────────────────────
 const buildStatusHtml = ({ sessionId, customerEmail, customerName, amountTotal, lineItems, shippingAddress, emailType }) => {
   const orderNumber = generateOrderNumber(sessionId);
   const currentDate = new Date().toLocaleDateString('da-DK', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -284,7 +282,6 @@ const buildStatusHtml = ({ sessionId, customerEmail, customerName, amountTotal, 
 </html>`;
 };
 
-// ─── FAKTURA EMAIL ─────────────────────────────────────────────────────────
 const buildFakturaHtml = ({ sessionId, customerEmail, customerName, amountTotal, lineItems, shippingAddress, fakturaNumber, cvr }) => {
   const orderNumber = generateOrderNumber(sessionId);
   const fNum = fakturaNumber || generateFakturaNumber(sessionId);
@@ -481,7 +478,6 @@ const buildFakturaHtml = ({ sessionId, customerEmail, customerName, amountTotal,
 </html>`;
 };
 
-// ─── SEND FUNCTIONS ────────────────────────────────────────────────────────
 const sendOrderEmail = async (orderData) => {
   const apiKey = process.env.RESEND_API_KEY;
   const fromEmail = process.env.RESEND_FROM_EMAIL;
@@ -533,7 +529,6 @@ const sendReceiptEmail = async (orderData) => {
   return sendOrderEmail({ ...orderData, emailType: 'order-confirmation' });
 };
 
-// ─── NETLIFY HANDLER ───────────────────────────────────────────────────────
 const handler = async (event) => {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: JSON.stringify({ error: 'Method not allowed' }) };

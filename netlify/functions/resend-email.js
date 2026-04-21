@@ -1,4 +1,4 @@
-const { sendFakturaEmail } = require('./send-order-email.js');
+const { sendFakturaEmail, sendOrderEmail } = require('./send-order-email.js');
 
 const getBaseUrl = (event) => {
   if (process.env.BASE_URL) return process.env.BASE_URL.replace(/\/$/, '');
@@ -7,6 +7,8 @@ const getBaseUrl = (event) => {
   if (!host) throw new Error('Missing BASE_URL and host header to resolve function URL');
   return `${proto}://${host}`;
 };
+
+const STATUS_EMAIL_TYPES = ['order-confirmation', 'production-complete', 'denmark-checked', 'on-the-way'];
 
 const handler = async (event) => {
   if (event.httpMethod !== 'POST') {
@@ -21,9 +23,11 @@ const handler = async (event) => {
     const body = JSON.parse(event.body);
     const { sessionId, emailType } = body;
 
-    // If full orderData is passed directly (from admin dashboard faktura button)
     if (body.customerEmail && body.lineItems) {
-      const response = await sendFakturaEmail(body);
+      const isStatusEmail = STATUS_EMAIL_TYPES.includes(emailType);
+      const response = isStatusEmail
+        ? await sendOrderEmail(body)
+        : await sendFakturaEmail(body);
       return {
         statusCode: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -39,7 +43,6 @@ const handler = async (event) => {
       };
     }
 
-    // Fetch session data
     const baseUrl = getBaseUrl(event);
     const sessionRes = await fetch(`${baseUrl}/.netlify/functions/get-session?session_id=${sessionId}`);
     if (!sessionRes.ok) {
