@@ -5,16 +5,17 @@ const formatPrice = (amountCents) => {
 };
 
 const generateOrderNumber = (sessionId) => {
-  return `ORD-${new Date().getFullYear()}-${sessionId.slice(0, 8).toUpperCase()}`;
+  const clean = (sessionId || '').replace(/^cs_(test|live)_/, '');
+  return `ORD-${new Date().getFullYear()}-${clean.slice(0, 8).toUpperCase()}`;
 };
 
 const buildOrderHtml = ({ sessionId, customerEmail, customerName, amountTotal, lineItems, shippingAddress }) => {
   const orderNumber = generateOrderNumber(sessionId);
   const currentDate = new Date().toLocaleDateString('da-DK', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
+    year: 'numeric', month: 'long', day: 'numeric',
   });
+  const subtotal = Math.round(amountTotal / 1.25);
+  const moms = amountTotal - subtotal;
 
   return `
     <!DOCTYPE html>
@@ -61,58 +62,30 @@ const buildOrderHtml = ({ sessionId, customerEmail, customerName, amountTotal, l
             <h1>TRADYDK</h1>
             <p>Personaliserede produkter til din virksomhed</p>
           </div>
-
           <div class="content">
-          <h1 style="font-size: 32px; font-weight: 800; color: #b5a087; margin-bottom: 8px; letter-spacing: -0.5px;">Bestilling modtaget</h1>
-          <p style="font-size: 15px; color: #666; margin-bottom: 30px; line-height: 1.6;">Din ordre er registreret og vi er allerede i gang med at behandle den.</p>
-
+            <h1 style="font-size: 32px; font-weight: 800; color: #b5a087; margin-bottom: 8px; letter-spacing: -0.5px;">Bestilling modtaget</h1>
+            <p style="font-size: 15px; color: #666; margin-bottom: 30px; line-height: 1.6;">Din ordre er registreret og vi er allerede i gang med at behandle den.</p>
             <div class="notice">
-              <strong> Dette er ikke den endelige ordrebekræftelse</strong><br>
-
+              <strong>Dette er ikke den endelige ordrebekræftelse</strong><br>
               Du vil modtage en endelig ordrebekræftelse på email, så snart dit design er godkendt. Dette tager normalt op til <strong>1 - 3 hverdage</strong>.
             </div>
-
             <div class="order-number">
               <label>Ordre nummer</label>
               <div class="number">${orderNumber}</div>
             </div>
-
             <div class="section">
-              <h2> Ordre Detaljer</h2>
-              <div class="info-row">
-                <span>Ordre dato:</span>
-                <strong>${currentDate}</strong>
-              </div>
-              <div class="info-row">
-                <span>Betalt:</span>
-                <strong>${formatPrice(amountTotal)} kr</strong>
-              </div>
+              <h2>Ordre Detaljer</h2>
+              <div class="info-row"><span>Ordre dato:</span><strong>${currentDate}</strong></div>
+              <div class="info-row"><span>Betalt:</span><strong>${formatPrice(amountTotal)} kr</strong></div>
             </div>
-
             <div class="section">
-              <h2> Kundeoplysninger</h2>
+              <h2>Kundeoplysninger</h2>
               ${customerName ? `<div class="info-row"><span>Navn:</span><strong>${customerName}</strong></div>` : ''}
-              <div class="info-row">
-                <span>Email:</span>
-                <strong>${customerEmail}</strong>
-              </div>
-              ${
-                shippingAddress
-                  ? `
-                <div class="info-row">
-                  <span>Leveringsadresse:</span>
-                  <strong>
-                    ${shippingAddress.line1}<br>
-                    ${shippingAddress.postal_code} ${shippingAddress.city}
-                  </strong>
-                </div>
-              `
-                  : ''
-              }
+              <div class="info-row"><span>Email:</span><strong>${customerEmail}</strong></div>
+              ${shippingAddress ? `<div class="info-row"><span>Leveringsadresse:</span><strong>${shippingAddress.line1}<br>${shippingAddress.postal_code} ${shippingAddress.city}</strong></div>` : ''}
             </div>
-
             <div class="section">
-              <h2> Dine Produkter</h2>
+              <h2>Dine Produkter</h2>
               <table>
                 <thead>
                   <tr>
@@ -122,38 +95,24 @@ const buildOrderHtml = ({ sessionId, customerEmail, customerName, amountTotal, l
                   </tr>
                 </thead>
                 <tbody>
-                  ${lineItems
-                    .map(
-                      (item) => `
+                  ${lineItems.map((item) => `
                     <tr>
                       <td>${item.name}</td>
                       <td style="text-align: center;">${item.quantity} stk</td>
                       <td style="text-align: right; font-weight: bold;">${formatPrice(item.price)} kr</td>
                     </tr>
-                  `
-                    )
-                    .join('')}
+                  `).join('')}
                 </tbody>
               </table>
-
               <div class="totals">
-                <div class="total-row">
-                  <span>Subtotal</span>
-                  <span>${formatPrice(amountTotal * 0.95)}&nbsp;kr</span>
-                </div>
-                <div class="total-row">
-                  <span>Forsendelse</span>
-                  <span style="color: #27ae60; font-weight: bold;">Gratis</span>
-                </div>
-                <div class="total-row final">
-                  <span>I alt betalt</span>
-                  <span>${formatPrice(amountTotal)}&nbsp;kr</span>
-                </div>
+                <div class="total-row"><span>Subtotal ekskl. moms</span><span>${formatPrice(subtotal)} kr</span></div>
+                <div class="total-row"><span>Moms (25%)</span><span>${formatPrice(moms)} kr</span></div>
+                <div class="total-row"><span>Forsendelse</span><span style="color: #27ae60; font-weight: bold;">Gratis</span></div>
+                <div class="total-row final"><span>I alt betalt</span><span>${formatPrice(amountTotal)} kr</span></div>
               </div>
             </div>
-
             <div class="steps">
-              <h3> Hvad sker der nu?</h3>
+              <h3>Hvad sker der nu?</h3>
               <ol>
                 <li><strong>Korrekturprint:</strong> Vi sender et korrekturprint til din email inden 1–3 arbejdsdage</li>
                 <li><strong>Godkendelse:</strong> Du godkender printet – herefter modtager du din ordrebekræftelse (op til 48 timer)</li>
@@ -162,12 +121,10 @@ const buildOrderHtml = ({ sessionId, customerEmail, customerName, amountTotal, l
                 <li><strong>Tracking:</strong> Du modtager et sporingslink når pakken er på vej</li>
               </ol>
             </div>
-
             <div style="text-align: center;">
               <a href="${process.env.BASE_URL}/ordre-bekraeftelse?session_id=${sessionId}" class="cta-link">Se din ordre kvittering</a>
             </div>
           </div>
-
           <div class="footer">
             <p>Har du spørgsmål? Kontakt os på <a href="mailto:support@tradydk.dk">support@tradydk.dk</a></p>
             <p style="margin-top: 10px; color: #bbb;">© ${new Date().getFullYear()} TRADYDK. Alle rettigheder forbeholdt.</p>
@@ -181,10 +138,10 @@ const buildOrderHtml = ({ sessionId, customerEmail, customerName, amountTotal, l
 const buildStatusHtml = ({ sessionId, customerEmail, customerName, amountTotal, lineItems, shippingAddress, emailType }) => {
   const orderNumber = generateOrderNumber(sessionId);
   const currentDate = new Date().toLocaleDateString('da-DK', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
+    year: 'numeric', month: 'long', day: 'numeric',
   });
+  const subtotal = Math.round(amountTotal / 1.25);
+  const moms = amountTotal - subtotal;
 
   const statusMap = {
     'order-confirmation': {
@@ -241,7 +198,6 @@ const buildStatusHtml = ({ sessionId, customerEmail, customerName, amountTotal, 
           .total-row.final { font-size: 18px; font-weight: bold; color: #b5a087; border-top: 2px solid #e8ddd2; padding-top: 12px; margin-top: 12px; }
           .notice { background: #fff8f0; border-left: 4px solid #b5a087; padding: 16px 20px; border-radius: 0 8px 8px 0; margin-bottom: 30px; font-size: 14px; color: #666; line-height: 1.6; }
           .notice strong { color: #333; }
-          .cta-link { display: inline-block; background: #b5a087; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; margin: 20px 0; }
           .footer { background: #f5f0ea; padding: 20px; text-align: center; font-size: 12px; color: #999; border-top: 1px solid #e8ddd2; }
           .footer a { color: #b5a087; text-decoration: none; }
         </style>
@@ -255,31 +211,20 @@ const buildStatusHtml = ({ sessionId, customerEmail, customerName, amountTotal, 
           <div class="content">
             <h1 style="font-size: 32px; font-weight: 800; color: #b5a087; margin-bottom: 8px; letter-spacing: -0.5px;">${status.title}</h1>
             <p style="font-size: 15px; color: #666; margin-bottom: 30px; line-height: 1.6;">${status.intro}</p>
-            <div class="notice">
-              <strong>${status.message}</strong>
-            </div>
+            <div class="notice"><strong>${status.message}</strong></div>
             <div class="order-number">
               <label>Ordre nummer</label>
               <div class="number">${orderNumber}</div>
             </div>
             <div class="section">
               <h2>Ordre Detaljer</h2>
-              <div class="info-row">
-                <span>Ordre dato:</span>
-                <strong>${currentDate}</strong>
-              </div>
-              <div class="info-row">
-                <span>Betalt:</span>
-                <strong>${formatPrice(amountTotal)} kr</strong>
-              </div>
+              <div class="info-row"><span>Ordre dato:</span><strong>${currentDate}</strong></div>
+              <div class="info-row"><span>Betalt:</span><strong>${formatPrice(amountTotal)} kr</strong></div>
             </div>
             <div class="section">
               <h2>Kundeoplysninger</h2>
               ${customerName ? `<div class="info-row"><span>Navn:</span><strong>${customerName}</strong></div>` : ''}
-              <div class="info-row">
-                <span>Email:</span>
-                <strong>${customerEmail}</strong>
-              </div>
+              <div class="info-row"><span>Email:</span><strong>${customerEmail}</strong></div>
               ${shippingAddress ? `<div class="info-row"><span>Leveringsadresse:</span><strong>${shippingAddress.line1}<br>${shippingAddress.postal_code} ${shippingAddress.city}</strong></div>` : ''}
             </div>
             <div class="section">
@@ -302,6 +247,12 @@ const buildStatusHtml = ({ sessionId, customerEmail, customerName, amountTotal, 
                   `).join('')}
                 </tbody>
               </table>
+              <div class="totals">
+                <div class="total-row"><span>Subtotal ekskl. moms</span><span>${formatPrice(subtotal)} kr</span></div>
+                <div class="total-row"><span>Moms (25%)</span><span>${formatPrice(moms)} kr</span></div>
+                <div class="total-row"><span>Forsendelse</span><span style="color: #27ae60; font-weight: bold;">Gratis</span></div>
+                <div class="total-row final"><span>I alt betalt</span><span>${formatPrice(amountTotal)} kr</span></div>
+              </div>
             </div>
           </div>
           <div class="footer">
@@ -314,21 +265,137 @@ const buildStatusHtml = ({ sessionId, customerEmail, customerName, amountTotal, 
   `;
 };
 
+const buildFakturaHtml = ({ sessionId, customerEmail, customerName, amountTotal, lineItems, shippingAddress, fakturaNumber }) => {
+  const orderNumber = generateOrderNumber(sessionId);
+  const currentDate = new Date().toLocaleDateString('da-DK', { year: 'numeric', month: 'long', day: 'numeric' });
+  const subtotal = Math.round(amountTotal / 1.25);
+  const moms = amountTotal - subtotal;
+  const fNum = fakturaNumber || orderNumber.replace('ORD-', 'FAK-');
+
+  return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+          * { margin: 0; padding: 0; }
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f0ea; }
+          .container { max-width: 600px; margin: 0 auto; background: white; }
+          .header { background: linear-gradient(to right, #b5a087, #9e8a72); padding: 40px 20px; text-align: center; color: white; }
+          .header h1 { font-size: 32px; margin-bottom: 5px; }
+          .header p { font-size: 14px; opacity: 0.9; }
+          .content { padding: 40px 20px; }
+          .faktura-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; padding-bottom: 24px; border-bottom: 3px solid #b5a087; }
+          .faktura-title { font-size: 36px; font-weight: 900; color: #b5a087; letter-spacing: -1px; }
+          .faktura-meta { text-align: right; font-size: 13px; color: #666; }
+          .faktura-meta strong { display: block; font-size: 15px; color: #333; margin-bottom: 2px; }
+          .parties { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 30px; }
+          .party h4 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #999; margin-bottom: 8px; }
+          .party p { font-size: 14px; color: #333; line-height: 1.7; }
+          .party strong { font-size: 15px; font-weight: 700; color: #111; }
+          table { width: 100%; border-collapse: collapse; margin-bottom: 0; }
+          thead tr { background: #b5a087; }
+          thead th { padding: 12px 14px; text-align: left; font-size: 12px; font-weight: 700; color: white; text-transform: uppercase; letter-spacing: 0.5px; }
+          thead th:last-child { text-align: right; }
+          tbody tr:nth-child(even) { background: #faf8f5; }
+          tbody td { padding: 12px 14px; border-bottom: 1px solid #e8ddd2; font-size: 14px; color: #333; }
+          tbody td:last-child { text-align: right; font-weight: 600; }
+          .totals-wrap { margin-top: 0; }
+          .totals { background: #f5f0ea; padding: 20px 24px; border-radius: 0 0 8px 8px; }
+          .total-row { display: flex; justify-content: space-between; font-size: 14px; color: #666; margin-bottom: 8px; }
+          .total-row.moms { color: #555; }
+          .total-row.final { font-size: 20px; font-weight: 900; color: #b5a087; border-top: 2px solid #d4c4b0; padding-top: 12px; margin-top: 8px; }
+          .paid-stamp { display: inline-block; border: 3px solid #22c55e; color: #16a34a; font-size: 18px; font-weight: 900; padding: 8px 20px; border-radius: 6px; letter-spacing: 2px; transform: rotate(-3deg); margin: 20px 0; }
+          .footer { background: #f5f0ea; padding: 24px 20px; text-align: center; font-size: 12px; color: #999; border-top: 1px solid #e8ddd2; }
+          .footer a { color: #b5a087; text-decoration: none; }
+          .notice { background: #fff8f0; border-left: 4px solid #b5a087; padding: 14px 18px; border-radius: 0 8px 8px 0; margin-bottom: 24px; font-size: 13px; color: #666; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>TRADYDK</h1>
+            <p>Personaliserede produkter til din virksomhed</p>
+          </div>
+          <div class="content">
+            <div class="faktura-header">
+              <div>
+                <div class="faktura-title">FAKTURA</div>
+                <div style="margin-top: 8px; font-size: 13px; color: #888;">Ordre: ${orderNumber}</div>
+              </div>
+              <div class="faktura-meta">
+                <strong>Faktura nr. ${fNum}</strong>
+                <span>Dato: ${currentDate}</span><br>
+                <span style="margin-top: 4px; display: inline-block;">Forfaldsdato: ${currentDate}</span>
+              </div>
+            </div>
+
+            <div class="parties">
+              <div class="party">
+                <h4>Sælger</h4>
+                <strong>TRADYDK</strong>
+                <p>CVR: [DIT CVR NR]<br>support@tradydk.dk<br>tradydk.dk</p>
+              </div>
+              <div class="party">
+                <h4>Køber</h4>
+                ${customerName ? `<strong>${customerName}</strong>` : ''}
+                <p>${customerEmail}${shippingAddress ? `<br>${shippingAddress.line1}<br>${shippingAddress.postal_code} ${shippingAddress.city}` : ''}</p>
+              </div>
+            </div>
+
+            <table>
+              <thead>
+                <tr>
+                  <th>Beskrivelse</th>
+                  <th style="text-align: center;">Antal</th>
+                  <th style="text-align: right;">Beløb</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${lineItems.map((item) => `
+                  <tr>
+                    <td>${item.name}</td>
+                    <td style="text-align: center;">${item.quantity} stk</td>
+                    <td style="text-align: right; font-weight: 600;">${formatPrice(item.price)} kr</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+
+            <div class="totals-wrap">
+              <div class="totals">
+                <div class="total-row"><span>Subtotal ekskl. moms</span><span>${formatPrice(subtotal)} kr</span></div>
+                <div class="total-row moms"><span>Moms (25%)</span><span>${formatPrice(moms)} kr</span></div>
+                <div class="total-row"><span>Forsendelse</span><span style="color: #22c55e; font-weight: 700;">Gratis</span></div>
+                <div class="total-row final"><span>Total inkl. moms</span><span>${formatPrice(amountTotal)} kr</span></div>
+              </div>
+            </div>
+
+            <div style="text-align: center; margin: 24px 0;">
+              <div class="paid-stamp">BETALT</div>
+            </div>
+
+            <div class="notice">
+              Betaling modtaget via Stripe. Denne faktura fungerer som kvittering for din betaling.
+            </div>
+          </div>
+          <div class="footer">
+            <p>Spørgsmål? Kontakt os på <a href="mailto:support@tradydk.dk">support@tradydk.dk</a></p>
+            <p style="margin-top: 8px; color: #bbb;">© ${new Date().getFullYear()} TRADYDK. Alle rettigheder forbeholdt.</p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+};
+
 const sendOrderEmail = async (orderData) => {
   const apiKey = process.env.RESEND_API_KEY;
   const fromEmail = process.env.RESEND_FROM_EMAIL;
-
-  if (!apiKey) {
-    throw new Error('Missing RESEND_API_KEY environment variable');
-  }
-
-  if (!fromEmail) {
-    throw new Error('Missing RESEND_FROM_EMAIL environment variable. Use a verified Resend sender address.');
-  }
-
-  if (fromEmail.endsWith('@resend.dev')) {
-    throw new Error('RESEND_FROM_EMAIL is set to resend.dev. Use a verified custom domain address instead.');
-  }
+  if (!apiKey) throw new Error('Missing RESEND_API_KEY environment variable');
+  if (!fromEmail) throw new Error('Missing RESEND_FROM_EMAIL environment variable.');
+  if (fromEmail.endsWith('@resend.dev')) throw new Error('RESEND_FROM_EMAIL must be a verified custom domain.');
 
   const resend = new Resend(apiKey);
   const emailType = orderData.emailType || 'order-confirmation';
@@ -348,6 +415,24 @@ const sendOrderEmail = async (orderData) => {
   });
 };
 
+const sendFakturaEmail = async (orderData) => {
+  const apiKey = process.env.RESEND_API_KEY;
+  const fromEmail = process.env.RESEND_FAKTURA_EMAIL || process.env.RESEND_FROM_EMAIL;
+  if (!apiKey) throw new Error('Missing RESEND_API_KEY environment variable');
+  if (!fromEmail) throw new Error('Missing RESEND_FAKTURA_EMAIL environment variable.');
+
+  const resend = new Resend(apiKey);
+  const orderNumber = generateOrderNumber(orderData.sessionId);
+  const htmlContent = buildFakturaHtml(orderData);
+
+  return await resend.emails.send({
+    from: fromEmail,
+    to: orderData.customerEmail,
+    subject: `Faktura ${orderNumber.replace('ORD-', 'FAK-')} – TRADYDK`,
+    html: htmlContent,
+  });
+};
+
 const sendReceiptEmail = async (orderData) => {
   return sendOrderEmail({ ...orderData, emailType: 'order-confirmation' });
 };
@@ -355,27 +440,28 @@ const sendReceiptEmail = async (orderData) => {
 const handler = async (event) => {
   try {
     const orderData = JSON.parse(event.body);
-    const response = await sendReceiptEmail(orderData);
+    const emailType = orderData.emailType || 'order-confirmation';
+
+    let response;
+    if (emailType === 'faktura') {
+      response = await sendFakturaEmail(orderData);
+    } else {
+      response = await sendReceiptEmail(orderData);
+    }
 
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        success: true,
-        messageId: response.id,
-      }),
+      body: JSON.stringify({ success: true, messageId: response.id }),
     };
   } catch (error) {
     console.error('Email fejl:', error);
     return {
       statusCode: 500,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        success: false,
-        error: error.message,
-      }),
+      body: JSON.stringify({ success: false, error: error.message }),
     };
   }
 };
 
-module.exports = { handler, sendReceiptEmail, sendOrderEmail };
+module.exports = { handler, sendReceiptEmail, sendOrderEmail, sendFakturaEmail };

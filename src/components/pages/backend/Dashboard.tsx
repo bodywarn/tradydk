@@ -1,5 +1,5 @@
 import { useEffect, useState, type ChangeEventHandler } from "react"
-import { LayoutDashboard, Package, ShoppingCart, Users, Plus, Edit2, Trash2, Search, DollarSign, Save, X, Upload, Link as LinkIcon, Check, AlertCircle, ChevronDown, ChevronUp, RefreshCw, Ban, CheckCircle2, Home } from "lucide-react"
+import { LayoutDashboard, Package, ShoppingCart, Users, Plus, Edit2, Trash2, Search, DollarSign, Save, X, Upload, Link as LinkIcon, Check, AlertCircle, ChevronDown, ChevronUp, RefreshCw, Ban, CheckCircle2, Home, FileText } from "lucide-react"
 import { useAuth } from "../../../hooks/useAuth"
 import { db } from "@/lib/firebase"
 import { uploadToCloudinary } from "@/lib/cloudinary"
@@ -55,12 +55,13 @@ const DEFAULT_TIER_PRICES: TierPrice[] = [
 
 const DEFAULT_DECORATION_AREA: DecorationArea = { left: 22, top: 22, width: 56, height: 52 }
 
-const formatOrderNumber = (sessionId: string, createdAt: string) =>
-  `ORD-${new Date(createdAt).getFullYear()}-${(sessionId || '').slice(0, 8).toUpperCase()}`
+const formatOrderNumber = (sessionId: string, createdAt: string) => {
+  const clean = (sessionId || '').replace(/^cs_(test|live)_/, '');
+  return `ORD-${new Date(createdAt).getFullYear()}-${clean.slice(0, 8).toUpperCase()}`;
+};
 
-const DecorationAreaEditor = ({
-  label, area, previewImage, onChange,
-}: {
+// ─── DECORATION AREA EDITOR ────────────────────────────────────────────────
+const DecorationAreaEditor = ({ label, area, previewImage, onChange }: {
   label: string; area: DecorationArea; previewImage: string; onChange: (area: DecorationArea) => void
 }) => {
   const fields: { key: keyof DecorationArea; label: string; min: number; max: number }[] = [
@@ -74,11 +75,7 @@ const DecorationAreaEditor = ({
       <p className="text-sm font-bold text-gray-700">{label}</p>
       <div className="flex gap-4 items-start">
         <div className="relative w-36 h-36 shrink-0 bg-white border-2 border-gray-200 rounded-lg overflow-hidden">
-          {previewImage ? (
-            <img src={previewImage} alt="preview" className="absolute inset-0 w-full h-full object-contain" />
-          ) : (
-            <div className="absolute inset-0 flex items-center justify-center text-gray-300 text-xs">Intet billede</div>
-          )}
+          {previewImage ? <img src={previewImage} alt="preview" className="absolute inset-0 w-full h-full object-contain" /> : <div className="absolute inset-0 flex items-center justify-center text-gray-300 text-xs">Intet billede</div>}
           <div className="absolute border-2 border-dashed border-[#b5a087] rounded" style={{ left: `${area.left}%`, top: `${area.top}%`, width: `${area.width}%`, height: `${area.height}%`, backgroundColor: 'rgba(181,160,135,0.12)' }} />
         </div>
         <div className="flex-1 grid grid-cols-2 gap-2">
@@ -98,16 +95,137 @@ const DecorationAreaEditor = ({
   )
 }
 
-const DesignTab = ({
-  customizations, products, handleApproveCustomization, handleRejectCustomization,
-  loadCustomizations, setSuccess, setError, formatDate
-}: {
+// ─── DESIGN PREVIEW CARD (used inline in orders) ───────────────────────────
+const DesignPreviewCard = ({ custom, products, onApprove, onReject, onUpdateDelivery, setSuccess, setError, loadCustomizations, formatDate }: {
+  custom: Customization; products: Product[];
+  onApprove: (id: string) => void; onReject: (id: string) => void;
+  onUpdateDelivery: (id: string, status: 'received' | 'shipped' | 'failed') => void;
+  setSuccess: (s: string) => void; setError: (s: string) => void;
+  loadCustomizations: () => void; formatDate: (d: string) => string;
+}) => {
+  const [side, setSide] = useState<'front' | 'back'>('front')
+  const data = custom.customization_data as any
+  const logoImage = data.logoImage as string | undefined
+  const logoPosition = data.logoPosition as { x: number; y: number; scale: number; rotation: number } | undefined
+  const decorationSide = (data.decorationSide as string) || 'front'
+  const selectedColor = data.selectedColor as string | undefined
+  const selectedSize = data.selectedSize as string | undefined
+  const printTypeName = data.printTypeName as string | undefined
+  const printTypeId = data.printType as string | undefined
+  const extraPrice = data.extraPrice as number | undefined
+  const frontLogoUrl = (data.frontLogoUrl as string | null) || null
+  const backLogoUrl = (data.backLogoUrl as string | null) || null
+  const areaFront = data.decorationAreaFront || { left: 22, top: 22, width: 56, height: 52 }
+  const areaBack = data.decorationAreaBack || { left: 22, top: 22, width: 56, height: 52 }
+  const hasBothSides = !!(frontLogoUrl && backLogoUrl)
+  const matched = products.find(p => p.name.toLowerCase().includes((custom.product_name || '').toLowerCase().split(' ')[0]))
+  const frontShirtUrl = matched?.image_url || ''
+  const backShirtUrl = (matched as any)?.backImage || matched?.image_url || ''
+  const previewShirt = side === 'back' ? backShirtUrl : frontShirtUrl
+  const previewLogoUrl = side === 'back' ? (backLogoUrl || logoImage || '') : (frontLogoUrl || logoImage || '')
+  const previewArea = side === 'back' ? areaBack : areaFront
+  const printBadgeClass: Record<string, string> = { dtg: 'bg-blue-100 text-blue-800', broderi: 'bg-purple-100 text-purple-800' }
+  const printEmoji: Record<string, string> = { dtg: '🖨️', broderi: '🧵' }
+
+  const handleDelete = async () => {
+    if (!confirm("Slet dette design permanent?")) return
+    try { await deleteDoc(doc(db, 'customizations', custom.id)); setSuccess("Design slettet!"); setTimeout(() => setSuccess(""), 3000); loadCustomizations() }
+    catch (err: any) { setError(err.message) }
+  }
+
+  return (
+    <div className="border border-[#e8ddd2] rounded-xl overflow-hidden bg-[#faf8f5]">
+      <div className="px-4 py-2 bg-[#f0ebe4] border-b border-[#e8ddd2] flex items-center gap-2">
+        <span className="text-xs font-bold text-[#8a7560] uppercase tracking-wider">Design tilknyttet ordre</span>
+        <span className={`ml-auto text-xs font-bold px-2 py-0.5 rounded-full ${custom.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : custom.status === 'approved' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+          {custom.status === 'pending' ? '⏳ Afventer' : custom.status === 'approved' ? '✓ Godkendt' : '✗ Afvist'}
+        </span>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2">
+        {/* Preview */}
+        <div className="bg-white flex flex-col" style={{ minHeight: '220px' }}>
+          {hasBothSides && (
+            <div className="flex gap-1 p-1.5 border-b border-gray-100">
+              {(['front', 'back'] as const).map(s => (
+                <button key={s} onClick={() => setSide(s)} className={`flex-1 py-1 rounded-lg text-xs font-semibold transition ${side === s ? 'bg-[#b5a087] text-white' : 'text-gray-500 hover:text-gray-700'}`}>
+                  {s === 'front' ? '↑ Forside' : '↓ Bagside'}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="relative flex-1" style={{ minHeight: '180px' }}>
+            {previewShirt ? <img src={previewShirt} alt="Trøje" className="absolute inset-0 w-full h-full object-contain p-3" /> : <div className="absolute inset-0 flex items-center justify-center"><span className="text-gray-300 text-xs">Intet produktbillede</span></div>}
+            {previewLogoUrl && logoPosition && (
+              <div className="absolute pointer-events-none" style={{ left: `${previewArea.left}%`, top: `${previewArea.top}%`, width: `${previewArea.width}%`, height: `${previewArea.height}%` }}>
+                <div className="absolute" style={{ left: `${logoPosition.x}%`, top: `${logoPosition.y}%`, width: `${logoPosition.scale * 40}%`, height: `${logoPosition.scale * 40}%`, transform: `translate(-50%, -50%) rotate(${logoPosition.rotation}deg)` }}>
+                  <img src={previewLogoUrl} alt="Logo" className="w-full h-full object-contain drop-shadow-lg" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                </div>
+              </div>
+            )}
+            <div className="absolute top-2 left-2 bg-black/60 text-white text-xs px-2 py-0.5 rounded-full">{hasBothSides ? (side === 'front' ? '↑ Forside' : '↓ Bagside') : decorationSide === 'back' ? '↓ Bagside' : '↑ Forside'}</div>
+          </div>
+        </div>
+        {/* Info */}
+        <div className="p-4 space-y-3">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+            {selectedColor && <div><p className="text-gray-400 text-xs uppercase mb-0.5">Farve</p><p className="font-semibold text-gray-900">{selectedColor}</p></div>}
+            {selectedSize && <div><p className="text-gray-400 text-xs uppercase mb-0.5">Størrelse</p><p className="font-semibold text-gray-900">{selectedSize}</p></div>}
+            <div><p className="text-gray-400 text-xs uppercase mb-0.5">Produkt</p><p className="font-semibold text-gray-900 text-xs">{custom.product_name}</p></div>
+            <div><p className="text-gray-400 text-xs uppercase mb-0.5">Dato</p><p className="font-semibold text-gray-900 text-xs">{formatDate(custom.created_at)}</p></div>
+          </div>
+          {(printTypeName || printTypeId) && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full ${printBadgeClass[printTypeId || ''] || 'bg-gray-100 text-gray-700'}`}><span>{printEmoji[printTypeId || ''] || '🖨️'}</span>{printTypeName || printTypeId}</span>
+              {typeof extraPrice === 'number' && <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${extraPrice === 0 ? 'bg-green-100 text-green-700' : 'bg-[#f5f0ea] text-[#8a7560]'}`}>{extraPrice === 0 ? 'Inkluderet' : `+${extraPrice} kr/stk`}</span>}
+            </div>
+          )}
+          <div className="flex gap-3 flex-wrap">
+            {(frontLogoUrl || (!backLogoUrl && logoImage)) && <a href={frontLogoUrl || logoImage} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline font-medium">{hasBothSides ? '↗ Forside logo' : '↗ Logo fil'}</a>}
+            {backLogoUrl && <a href={backLogoUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline font-medium">↗ Bagside logo</a>}
+          </div>
+          <div className="pt-2 border-t border-gray-100">
+            {custom.status === 'pending' && (
+              <div className="flex gap-2">
+                <button onClick={() => onApprove(custom.id)} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium text-xs"><Check className="w-3.5 h-3.5" />Godkend design</button>
+                <button onClick={() => onReject(custom.id)} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-medium text-xs"><X className="w-3.5 h-3.5" />Afvis</button>
+              </div>
+            )}
+            {custom.status === 'approved' && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Leveringsstatus</p>
+                <div className="flex gap-1.5">
+                  <button onClick={() => onUpdateDelivery(custom.id, 'received')} className={`flex-1 flex items-center justify-center gap-1 px-2 py-2 rounded-lg border-2 transition font-semibold text-xs ${custom.deliveryStatus === 'received' ? 'border-blue-400 bg-blue-100 text-blue-800' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`}><CheckCircle2 className="w-3 h-3" />Modtaget</button>
+                  <button onClick={() => onUpdateDelivery(custom.id, 'shipped')} className={`flex-1 flex items-center justify-center gap-1 px-2 py-2 rounded-lg border-2 transition font-semibold text-xs ${custom.deliveryStatus === 'shipped' ? 'border-green-400 bg-green-100 text-green-800' : 'border-green-200 bg-green-50 text-green-700 hover:bg-green-100'}`}><Check className="w-3 h-3" />Sendt</button>
+                  <button onClick={() => onUpdateDelivery(custom.id, 'failed')} className={`flex-1 flex items-center justify-center gap-1 px-2 py-2 rounded-lg border-2 transition font-semibold text-xs ${custom.deliveryStatus === 'failed' ? 'border-red-400 bg-red-100 text-red-800' : 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100'}`}><Ban className="w-3 h-3" />Mislykket</button>
+                </div>
+                {custom.notes && <p className="text-xs text-gray-500 bg-gray-50 rounded px-2 py-1">Status: <span className="font-medium text-gray-700">{custom.notes}</span></p>}
+              </div>
+            )}
+            {custom.status === 'rejected' && (
+              <div className="space-y-2">
+                {custom.notes && <p className="text-xs text-red-700 bg-red-50 px-2 py-1.5 rounded border border-red-100">✗ Årsag: {custom.notes}</p>}
+                <button onClick={handleDelete} className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-gray-50 text-red-600 hover:bg-red-50 rounded-lg transition font-medium text-xs border border-red-100"><Trash2 className="w-3.5 h-3.5" />Slet design permanent</button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── STANDALONE DESIGN TAB (for designs without matching orders) ───────────
+const DesignTab = ({ customizations, products, handleApproveCustomization, handleRejectCustomization, loadCustomizations, setSuccess, setError, formatDate }: {
   customizations: Customization[]; products: Product[]
   handleApproveCustomization: (id: string) => void; handleRejectCustomization: (id: string) => void
   loadCustomizations: () => void; setSuccess: (s: string) => void; setError: (s: string) => void; formatDate: (d: string) => string
 }) => {
-  const [designTab, setDesignTab]       = useState<'pending' | 'approved' | 'rejected'>('pending')
-  const [previewSides, setPreviewSides] = useState<Record<string, 'front' | 'back'>>({})
+  const [designTab, setDesignTab] = useState<'pending' | 'approved' | 'rejected'>('pending')
+  const handleUpdateDeliveryStatus = async (id: string, status: 'received' | 'shipped' | 'failed') => {
+    const notes = status === 'shipped' ? 'Sendt til kunde' : status === 'failed' ? 'Mislykket' : 'Modtaget'
+    try { await updateDoc(doc(db, 'customizations', id), { deliveryStatus: status, notes, updated_at: new Date().toISOString() }); setSuccess(`✓ Status: ${notes}`); setTimeout(() => setSuccess(""), 3000); loadCustomizations() }
+    catch (err: any) { setError(err.message) }
+  }
   const pending  = customizations.filter(c => c.status === 'pending')
   const approved = customizations.filter(c => c.status === 'approved')
   const rejected = customizations.filter(c => c.status === 'rejected')
@@ -117,44 +235,6 @@ const DesignTab = ({
     { id: 'rejected' as const, label: 'Afviste',   count: rejected.length, color: 'bg-red-100 text-red-800'       },
   ]
   const current = designTab === 'pending' ? pending : designTab === 'approved' ? approved : rejected
-  const handleDeleteCustomization = async (id: string) => {
-    if (!confirm("Er du sikker på at du vil slette dette design permanent?")) return
-    try { await deleteDoc(doc(db, 'customizations', id)); setSuccess("Design slettet!"); setTimeout(() => setSuccess(""), 3000); loadCustomizations() }
-    catch (err: any) { setError(err.message) }
-  }
-  const handleUpdateDeliveryStatus = async (id: string, status: 'received' | 'shipped' | 'failed') => {
-    const notes = status === 'shipped' ? 'Sendt til kunde' : status === 'failed' ? 'Mislykket' : 'Modtaget'
-    try { await updateDoc(doc(db, 'customizations', id), { deliveryStatus: status, notes, updated_at: new Date().toISOString() }); setSuccess(`✓ Status: ${notes}`); setTimeout(() => setSuccess(""), 3000); loadCustomizations() }
-    catch (err: any) { setError(err.message) }
-  }
-  const DEFAULT_AREA = { left: 22, top: 22, width: 56, height: 52 }
-  const downloadSide = (logoUrl: string, logoPos: { x: number; y: number; scale: number; rotation: number }, area: { left: number; top: number; width: number; height: number }, shirtUrl: string, filename: string) => {
-    const canvas = document.createElement('canvas'); canvas.width = 600; canvas.height = 600
-    const ctx = canvas.getContext('2d'); if (!ctx) return
-    const triggerDownload = () => { const link = document.createElement('a'); link.download = filename; link.href = canvas.toDataURL('image/png'); document.body.appendChild(link); link.click(); document.body.removeChild(link) }
-    const renderLogo = () => {
-      if (!logoUrl) { triggerDownload(); return }
-      const logo = new Image(); logo.crossOrigin = 'anonymous'
-      logo.onload = () => {
-        const areaWpx = (area.width / 100) * 600; const areaHpx = (area.height / 100) * 600
-        const logoW = areaWpx * (logoPos.scale * 0.40); const logoH = areaHpx * (logoPos.scale * 0.40)
-        const canvasX = ((area.left + (logoPos.x / 100) * area.width) / 100) * 600
-        const canvasY = ((area.top + (logoPos.y / 100) * area.height) / 100) * 600
-        ctx.save(); ctx.translate(canvasX, canvasY); ctx.rotate((logoPos.rotation * Math.PI) / 180)
-        ctx.drawImage(logo, -logoW / 2, -logoH / 2, logoW, logoH); ctx.restore(); triggerDownload()
-      }
-      logo.onerror = triggerDownload; logo.src = logoUrl
-    }
-    if (shirtUrl) {
-      const shirt = new Image(); shirt.crossOrigin = 'anonymous'
-      shirt.onload = () => { ctx.drawImage(shirt, 0, 0, 600, 600); renderLogo() }
-      shirt.onerror = () => { ctx.fillStyle = '#f5f0ea'; ctx.fillRect(0, 0, 600, 600); renderLogo() }
-      shirt.src = shirtUrl
-    } else { ctx.fillStyle = '#f5f0ea'; ctx.fillRect(0, 0, 600, 600); renderLogo() }
-  }
-  const printBadgeClass: Record<string, string> = { dtg: 'bg-blue-100 text-blue-800', broderi: 'bg-purple-100 text-purple-800' }
-  const printEmoji: Record<string, string> = { dtg: '🖨️', broderi: '🧵' }
-
   return (
     <div className="bg-white rounded-xl shadow-sm p-6">
       <h2 className="text-2xl font-bold text-gray-900 mb-6">Design Godkendelser</h2>
@@ -169,144 +249,20 @@ const DesignTab = ({
         <div className="text-center py-16"><p className="text-sm text-gray-400">Ingen {tabDefs.find(t => t.id === designTab)?.label.toLowerCase()} designs</p></div>
       ) : (
         <div className="space-y-4">
-          {current.map(custom => {
-            const data = custom.customization_data as any
-            const logoImage = data.logoImage as string | undefined
-            const logoPosition = data.logoPosition as { x: number; y: number; scale: number; rotation: number } | undefined
-            const decorationSide = (data.decorationSide as string) || 'front'
-            const selectedColor = data.selectedColor as string | undefined
-            const selectedSize = data.selectedSize as string | undefined
-            const printTypeName = data.printTypeName as string | undefined
-            const printTypeId = data.printType as string | undefined
-            const extraPrice = data.extraPrice as number | undefined
-            const frontLogoUrl = (data.frontLogoUrl as string | null) || null
-            const backLogoUrl = (data.backLogoUrl as string | null) || null
-            const areaFront = data.decorationAreaFront || DEFAULT_AREA
-            const areaBack = data.decorationAreaBack || DEFAULT_AREA
-            const hasBothSides = !!(frontLogoUrl && backLogoUrl)
-            const currentSide = previewSides[custom.id] ?? (decorationSide === 'back' ? 'back' : 'front')
-            const matched = products.find(p => p.name.toLowerCase().includes((custom.product_name || '').toLowerCase().split(' ')[0]))
-            const frontShirtUrl = matched?.image_url || ''
-            const backShirtUrl = (matched as any)?.backImage || matched?.image_url || ''
-            const previewShirt = currentSide === 'back' ? backShirtUrl : frontShirtUrl
-            const previewLogoUrl = currentSide === 'back' ? (backLogoUrl || logoImage || '') : (frontLogoUrl || logoImage || '')
-            const previewArea = currentSide === 'back' ? areaBack : areaFront
-
-            const customOrderNumber = custom.sessionId
-              ? formatOrderNumber(custom.sessionId, custom.created_at)
-              : null
-
-            return (
-              <div key={custom.id} className="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-                <div className="grid grid-cols-1 md:grid-cols-2">
-                  <div className="bg-gray-50 flex flex-col" style={{ minHeight: '280px' }}>
-                    {hasBothSides && (
-                      <div className="flex gap-1 p-1.5 bg-white border-b border-gray-100">
-                        {(['front', 'back'] as const).map(side => (
-                          <button key={side} onClick={() => setPreviewSides(prev => ({ ...prev, [custom.id]: side }))} className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition ${currentSide === side ? 'bg-[#b5a087] text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-                            {side === 'front' ? '↑ Forside' : '↓ Bagside'}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    <div className="relative flex-1" style={{ minHeight: '240px' }}>
-                      {previewShirt ? <img src={previewShirt} alt="Trøje" className="absolute inset-0 w-full h-full object-contain p-4" /> : <div className="absolute inset-0 flex items-center justify-center"><span className="text-gray-300 text-xs">Intet produktbillede</span></div>}
-                      {previewLogoUrl && logoPosition && (
-                        <div className="absolute pointer-events-none" style={{ left: `${previewArea.left}%`, top: `${previewArea.top}%`, width: `${previewArea.width}%`, height: `${previewArea.height}%` }}>
-                          <div className="absolute" style={{ left: `${logoPosition.x}%`, top: `${logoPosition.y}%`, width: `${logoPosition.scale * 40}%`, height: `${logoPosition.scale * 40}%`, transform: `translate(-50%, -50%) rotate(${logoPosition.rotation}deg)` }}>
-                            <img src={previewLogoUrl} alt="Logo" className="w-full h-full object-contain drop-shadow-lg" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
-                          </div>
-                        </div>
-                      )}
-                      <div className="absolute top-3 left-3 bg-black/60 text-white text-xs px-2 py-1 rounded-full font-medium">{hasBothSides ? (currentSide === 'front' ? '↑ Forside' : '↓ Bagside') : decorationSide === 'back' ? '↓ Bagside' : decorationSide === 'both' ? '↕ Begge sider' : '↑ Forside'}</div>
-                      <div className="absolute bottom-3 right-3 flex gap-1.5">
-                        {hasBothSides ? (
-                          <>
-                            <button onClick={() => frontLogoUrl && logoPosition && downloadSide(frontLogoUrl, logoPosition, areaFront, frontShirtUrl, `design-${custom.id.slice(0, 6)}-forside.png`)} className="bg-white text-gray-700 text-xs px-2.5 py-1.5 rounded-lg shadow hover:bg-gray-50 transition font-medium border border-gray-100">⬇ Forside</button>
-                            <button onClick={() => backLogoUrl && logoPosition && downloadSide(backLogoUrl, logoPosition, areaBack, backShirtUrl, `design-${custom.id.slice(0, 6)}-bagside.png`)} className="bg-white text-gray-700 text-xs px-2.5 py-1.5 rounded-lg shadow hover:bg-gray-50 transition font-medium border border-gray-100">⬇ Bagside</button>
-                          </>
-                        ) : (
-                          <button onClick={() => previewLogoUrl && logoPosition && downloadSide(previewLogoUrl, logoPosition, previewArea, previewShirt, `design-${custom.id.slice(0, 8)}.png`)} className="bg-white text-gray-700 text-xs px-3 py-1.5 rounded-lg shadow hover:bg-gray-50 transition font-medium border border-gray-100">⬇ Download</button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="p-5 space-y-4">
-                    <div className="flex flex-wrap items-center gap-4 p-4 rounded-xl bg-gradient-to-r from-[#b5a087] to-[#b5a087] text-white">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[10px] font-bold tracking-widest text-white uppercase mb-1">
-                          {customOrderNumber ? 'Ordre nummer' : 'Design ID'}
-                        </p>
-                        <p className="text-base font-mono font-bold text-white tracking-wide">
-                          {customOrderNumber ?? custom.id.slice(0, 12).toUpperCase()}
-                        </p>
-                      </div>
-                      <div className="flex flex-col items-end gap-1 shrink-0">
-                        <p className="text-[10px] text-white uppercase tracking-widest">Oprettet</p>
-                        <p className="text-sm font-semibold text-slate-200">{formatDate(custom.created_at)}</p>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-                      <div className="col-span-2"><p className="text-gray-400 text-xs uppercase mb-0.5">Bruger</p><p className="font-semibold text-gray-900 truncate">{custom.user_email}</p></div>
-                      <div><p className="text-gray-400 text-xs uppercase mb-0.5">Produkt</p><p className="font-semibold text-gray-900">{custom.product_name}</p></div>
-                      <div><p className="text-gray-400 text-xs uppercase mb-0.5">Dato</p><p className="font-semibold text-gray-900">{formatDate(custom.created_at)}</p></div>
-                      {selectedColor && <div><p className="text-gray-400 text-xs uppercase mb-0.5">Farve</p><p className="font-semibold text-gray-900">{selectedColor}</p></div>}
-                      {selectedSize && <div><p className="text-gray-400 text-xs uppercase mb-0.5">Størrelse</p><p className="font-semibold text-gray-900">{selectedSize}</p></div>}
-                    </div>
-                    {(printTypeName || printTypeId) && (
-                      <div>
-                        <p className="text-gray-400 text-xs uppercase mb-1.5">Print-type</p>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full ${printBadgeClass[printTypeId || ''] || 'bg-gray-100 text-gray-700'}`}><span>{printEmoji[printTypeId || ''] || '🖨️'}</span>{printTypeName || printTypeId}</span>
-                          {typeof extraPrice === 'number' && <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${extraPrice === 0 ? 'bg-green-100 text-green-700' : 'bg-[#f5f0ea] text-[#8a7560]'}`}>{extraPrice === 0 ? 'Inkluderet' : `+${extraPrice} kr/stk`}</span>}
-                          {hasBothSides && <span className="text-xs text-gray-500 bg-gray-100 px-2.5 py-1 rounded-full">Begge sider</span>}
-                        </div>
-                      </div>
-                    )}
-                    <div>
-                      <p className="text-gray-400 text-xs uppercase mb-1.5">Logo filer</p>
-                      <div className="flex gap-3 flex-wrap">
-                        {(frontLogoUrl || (!backLogoUrl && logoImage)) && <a href={frontLogoUrl || logoImage} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline font-medium">{hasBothSides ? 'Forside ↗' : 'Logo ↗'}</a>}
-                        {backLogoUrl && <a href={backLogoUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline font-medium">Bagside ↗</a>}
-                      </div>
-                    </div>
-                    <div className="pt-3 border-t border-gray-100">
-                      {designTab === 'pending' && (
-                        <div className="flex gap-2">
-                          <button onClick={() => handleApproveCustomization(custom.id)} className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium text-sm"><Check className="w-4 h-4" />Godkend</button>
-                          <button onClick={() => handleRejectCustomization(custom.id)} className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-medium text-sm"><X className="w-4 h-4" />Afvis</button>
-                        </div>
-                      )}
-                      {designTab === 'approved' && (
-                        <div className="space-y-2">
-                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Leveringsstatus</p>
-                          <div className="flex gap-2">
-                            <button onClick={() => handleUpdateDeliveryStatus(custom.id, 'received')} className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg border-2 transition font-semibold text-xs ${custom.deliveryStatus === 'received' ? 'border-blue-400 bg-blue-100 text-blue-800' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`}><CheckCircle2 className="w-3.5 h-3.5" />Modtaget</button>
-                            <button onClick={() => handleUpdateDeliveryStatus(custom.id, 'shipped')} className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg border-2 transition font-semibold text-xs ${custom.deliveryStatus === 'shipped' ? 'border-green-400 bg-green-100 text-green-800' : 'border-green-200 bg-green-50 text-green-700 hover:bg-green-100'}`}><Check className="w-3.5 h-3.5" />Sendt</button>
-                            <button onClick={() => handleUpdateDeliveryStatus(custom.id, 'failed')} className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg border-2 transition font-semibold text-xs ${custom.deliveryStatus === 'failed' ? 'border-red-400 bg-red-100 text-red-800' : 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100'}`}><Ban className="w-3.5 h-3.5" />Mislykket</button>
-                          </div>
-                          {custom.notes && <p className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">Status: <span className="font-medium text-gray-700">{custom.notes}</span></p>}
-                        </div>
-                      )}
-                      {designTab === 'rejected' && (
-                        <div className="space-y-2">
-                          {custom.notes && <p className="text-xs text-red-700 bg-red-50 px-3 py-2 rounded-lg border border-red-100">✗ Årsag: {custom.notes}</p>}
-                          <button onClick={() => handleDeleteCustomization(custom.id)} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-50 text-red-600 hover:bg-red-50 rounded-lg transition font-medium text-sm border border-red-100"><Trash2 className="w-4 h-4" />Slet design permanent</button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )
-          })}
+          {current.map(custom => (
+            <DesignPreviewCard key={custom.id} custom={custom} products={products}
+              onApprove={handleApproveCustomization} onReject={handleRejectCustomization}
+              onUpdateDelivery={handleUpdateDeliveryStatus}
+              setSuccess={setSuccess} setError={setError}
+              loadCustomizations={loadCustomizations} formatDate={formatDate} />
+          ))}
         </div>
       )}
     </div>
   )
 }
 
+// ─── MAIN DASHBOARD ────────────────────────────────────────────────────────
 const AdminDashboard = () => {
   const { logout, user } = useAuth()
   const navigate = useNavigate()
@@ -356,7 +312,10 @@ const AdminDashboard = () => {
       const firestoreOrders = snap.docs.map(d => ({ id: d.id, ...d.data() })) as StripeOrder[]
       let stripeOrders: StripeOrder[] = []
       const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-      if (!isLocal) { try { const res = await fetch('/.netlify/functions/get-orders'); const ct = res.headers.get('content-type') || ''; if (res.ok && ct.includes('application/json')) stripeOrders = (await res.json()).orders || [] } catch (err) { console.error('Stripe fetch fejl:', err) } }
+      if (!isLocal) {
+        try { const res = await fetch('/.netlify/functions/get-orders'); const ct = res.headers.get('content-type') || ''; if (res.ok && ct.includes('application/json')) stripeOrders = (await res.json()).orders || [] }
+        catch (err) { console.error('Stripe fetch fejl:', err) }
+      }
       const ids = new Set(firestoreOrders.map(o => o.sessionId))
       const newFromStripe: StripeOrder[] = stripeOrders.filter(so => !ids.has(so.sessionId)).map(so => ({ ...so, id: so.sessionId, status: 'pending' as const, notes: '' }))
       setOrders([...firestoreOrders, ...newFromStripe].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()))
@@ -370,6 +329,21 @@ const AdminDashboard = () => {
     try { const snap = await getDocs(query(collection(db, 'customizations'), orderBy('created_at', 'desc'))); setCustomizations(snap.docs.map(d => ({ id: d.id, ...d.data() })) as Customization[]) }
     catch (err) { console.error(err) }
   }
+
+  // Get customizations that belong to a specific order (by sessionId or by email+approximate time)
+  const getOrderCustomizations = (order: StripeOrder): Customization[] => {
+    // Primary: match by sessionId
+    const bySession = customizations.filter(c => c.sessionId === order.sessionId)
+    if (bySession.length > 0) return bySession
+    // Fallback: match by email within ±2 hours of order
+    const orderTime = new Date(order.created_at).getTime()
+    return customizations.filter(c => {
+      if (c.user_email !== order.customerEmail) return false
+      const customTime = new Date(c.created_at).getTime()
+      return Math.abs(customTime - orderTime) < 2 * 60 * 60 * 1000 // 2 hours
+    })
+  }
+
   const handleMaintenanceToggle = async () => {
     if (maintenanceMode === null) return; setMaintenanceLoading(true)
     try { const newVal = !maintenanceMode; await saveMaintenance(newVal); setMaintenanceMode(newVal); setSuccess(newVal ? "🔒 Vedligeholdelsestilstand aktiveret" : "✅ Shoppen er nu online!"); setTimeout(() => setSuccess(""), 4000) }
@@ -419,6 +393,30 @@ const AdminDashboard = () => {
       setSuccess(`${label} sendt til ${order.customerEmail}`); setTimeout(() => setSuccess(""), 4000)
     } catch (err: any) { setError(err.message || 'Kunne ikke sende mail') } finally { setActionLoading(null) }
   }
+  const handleSendFaktura = async (order: StripeOrder) => {
+    setActionLoading(order.id)
+    try {
+      const sessionRes = await fetch(`/.netlify/functions/get-session?session_id=${order.sessionId}`)
+      if (!sessionRes.ok) throw new Error('Kunne ikke hente session data')
+      const sessionData = await sessionRes.json()
+      const orderData = {
+        sessionId: order.sessionId,
+        customerEmail: sessionData.customerEmail || order.customerEmail,
+        customerName: sessionData.customerName || order.customerName,
+        amountTotal: sessionData.amountTotal || order.amountTotal,
+        lineItems: (sessionData.lineItems || order.lineItems || []).map((item: any) => ({
+          name: item.description || item.name,
+          quantity: item.quantity,
+          price: item.amount || item.price,
+        })),
+        shippingAddress: sessionData.shippingAddress || order.shippingAddress,
+        emailType: 'faktura',
+      }
+      const res = await fetch('/.netlify/functions/resend-email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(orderData) })
+      const data = await res.json(); if (!res.ok) throw new Error(data.error || 'Kunne ikke sende faktura')
+      setSuccess(`📄 Faktura sendt til ${order.customerEmail}`); setTimeout(() => setSuccess(""), 4000)
+    } catch (err: any) { setError(err.message || 'Kunne ikke sende faktura') } finally { setActionLoading(null) }
+  }
   const handleApproveCustomization = async (id: string) => {
     try { await updateDoc(doc(db, 'customizations', id), { status: 'approved', updated_at: new Date().toISOString() }); setSuccess("✓ Design godkendt!"); setTimeout(() => setSuccess(""), 3000); loadCustomizations() }
     catch (err: any) { setError(err.message) }
@@ -426,6 +424,11 @@ const AdminDashboard = () => {
   const handleRejectCustomization = async (id: string) => {
     const reason = prompt("Årsag til afvisning:"); if (!reason) return
     try { await updateDoc(doc(db, 'customizations', id), { status: 'rejected', notes: reason, updated_at: new Date().toISOString() }); setSuccess("✗ Design afvist!"); setTimeout(() => setSuccess(""), 3000); loadCustomizations() }
+    catch (err: any) { setError(err.message) }
+  }
+  const handleUpdateDeliveryStatus = async (id: string, status: 'received' | 'shipped' | 'failed') => {
+    const notes = status === 'shipped' ? 'Sendt til kunde' : status === 'failed' ? 'Mislykket' : 'Modtaget'
+    try { await updateDoc(doc(db, 'customizations', id), { deliveryStatus: status, notes, updated_at: new Date().toISOString() }); setSuccess(`✓ Status: ${notes}`); setTimeout(() => setSuccess(""), 3000); loadCustomizations() }
     catch (err: any) { setError(err.message) }
   }
   const handleImageFileChange: ChangeEventHandler<HTMLInputElement> = async (e) => {
@@ -502,9 +505,7 @@ const AdminDashboard = () => {
   ]
   const frontPreviewImage = productImages[0] || productForm.image_url || ''
   const backPreviewImage  = productForm.backImage || ''
-
-  const orderNumber = (order: StripeOrder) =>
-    formatOrderNumber(order.sessionId || order.id, order.created_at)
+  const orderNumber = (order: StripeOrder) => formatOrderNumber(order.sessionId || order.id, order.created_at)
 
   return (
     <main className="min-h-screen bg-gray-50">
@@ -601,6 +602,8 @@ const AdminDashboard = () => {
                       const cfg = orderStatusConfig[order.status] || orderStatusConfig.pending
                       const isExpanded = expandedOrder === order.id
                       const isLoading = actionLoading === order.id
+                      const orderCustomizations = getOrderCustomizations(order)
+
                       return (
                         <div key={order.id} className="border rounded-xl overflow-hidden">
                           <div className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gray-50">
@@ -608,6 +611,12 @@ const AdminDashboard = () => {
                               <p className="font-bold text-gray-900">{order.customerName || order.customerEmail}</p>
                               <p className="text-sm text-gray-500">{order.customerEmail}</p>
                               <p className="text-xs font-mono text-gray-400 mt-0.5">{orderNumber(order)}</p>
+                              {orderCustomizations.length > 0 && (
+                                <span className="inline-flex items-center gap-1 mt-1 text-xs bg-[#f5f0ea] text-[#8a7560] px-2 py-0.5 rounded-full font-medium">
+                                  🎨 {orderCustomizations.length} design{orderCustomizations.length > 1 ? 's' : ''}
+                                  {orderCustomizations.some(c => c.status === 'pending') && <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />}
+                                </span>
+                              )}
                             </div>
                             <div className="flex items-center gap-3">
                               <div className="text-right">
@@ -622,6 +631,7 @@ const AdminDashboard = () => {
 
                           {isExpanded && (
                             <div className="p-5 border-t space-y-5">
+                              {/* Order badge */}
                               <div className="flex flex-wrap items-center gap-4 p-4 rounded-xl bg-gradient-to-r from-[#b5a087] to-[#b5a087] border text-white">
                                 <div className="flex-1 min-w-0">
                                   <p className="text-[10px] font-bold tracking-widest text-white uppercase mb-1">Ordre nummer</p>
@@ -637,6 +647,7 @@ const AdminDashboard = () => {
                                 </div>
                               </div>
 
+                              {/* Products */}
                               <div>
                                 <h4 className="font-semibold text-gray-700 mb-2 text-sm uppercase tracking-wide">Produkter</h4>
                                 <div className="space-y-2">
@@ -658,6 +669,31 @@ const AdminDashboard = () => {
                                 </div>
                               </div>
 
+                              {/* ── DESIGNS TILKNYTTET ORDREN ── */}
+                              {orderCustomizations.length > 0 && (
+                                <div>
+                                  <h4 className="font-semibold text-gray-700 mb-3 text-sm uppercase tracking-wide flex items-center gap-2">
+                                    🎨 Designs ({orderCustomizations.length})
+                                  </h4>
+                                  <div className="space-y-3">
+                                    {orderCustomizations.map(custom => (
+                                      <DesignPreviewCard
+                                        key={custom.id}
+                                        custom={custom}
+                                        products={products}
+                                        onApprove={handleApproveCustomization}
+                                        onReject={handleRejectCustomization}
+                                        onUpdateDelivery={handleUpdateDeliveryStatus}
+                                        setSuccess={setSuccess}
+                                        setError={setError}
+                                        loadCustomizations={loadCustomizations}
+                                        formatDate={formatDate}
+                                      />
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
                               {order.shippingAddress && (
                                 <div>
                                   <h4 className="font-semibold text-gray-700 mb-2 text-sm uppercase tracking-wide">Leveringsadresse</h4>
@@ -675,6 +711,7 @@ const AdminDashboard = () => {
                                 </div>
                               )}
 
+                              {/* Status mails */}
                               <div className="space-y-3 pt-2 border-t">
                                 <h4 className="font-semibold text-gray-700 text-sm uppercase tracking-wide">Send status-mail</h4>
                                 <div className="grid gap-2 sm:grid-cols-2">
@@ -682,6 +719,9 @@ const AdminDashboard = () => {
                                   <button onClick={() => handleSendOrderStatusEmail(order, 'production-complete', 'Produktion færdig')} disabled={isLoading} className="px-4 py-3 bg-violet-600 hover:bg-violet-700 text-white rounded-lg font-medium transition disabled:opacity-50 text-sm">{isLoading ? 'Sender...' : 'Færdigproduceret og mod Danmark'}</button>
                                   <button onClick={() => handleSendOrderStatusEmail(order, 'denmark-checked', 'Tjekket i Danmark')} disabled={isLoading} className="px-4 py-3 bg-sky-600 hover:bg-sky-700 text-white rounded-lg font-medium transition disabled:opacity-50 text-sm">{isLoading ? 'Sender...' : 'Tjekket i Danmark og mod kunde'}</button>
                                   <button onClick={() => handleSendOrderStatusEmail(order, 'on-the-way', 'På vej til kunde')} disabled={isLoading} className="px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition disabled:opacity-50 text-sm">{isLoading ? 'Sender...' : 'På vej til kunden'}</button>
+                                  <button onClick={() => handleSendFaktura(order)} disabled={isLoading} className="px-4 py-3 bg-[#b5a087] hover:bg-[#9e8a72] text-white rounded-lg font-medium transition disabled:opacity-50 text-sm flex items-center justify-center gap-2 sm:col-span-2">
+                                    <FileText className="w-4 h-4" />{isLoading ? 'Sender...' : 'Send faktura til kunde'}
+                                  </button>
                                 </div>
                               </div>
 
@@ -722,7 +762,6 @@ const AdminDashboard = () => {
                   <h2 className="text-2xl font-bold text-gray-900">Produktstyring</h2>
                   <button onClick={() => { setShowProductForm(true); resetForm(false) }} className="flex items-center gap-2 px-4 py-2 bg-[#b5a087] text-white rounded-lg hover:bg-[#9e8a72] transition"><Plus className="w-5 h-5" />Tilføj Produkt</button>
                 </div>
-
                 {showProductForm && (
                   <div className="mb-6 p-6 border-2 border-[#e8ddd2] rounded-xl bg-[#f5f0ea]/50">
                     <div className="flex items-center justify-between mb-4">
@@ -758,7 +797,6 @@ const AdminDashboard = () => {
                           <input type="url" value={productForm.backImage} onChange={e => setProductForm(prev => ({ ...prev, backImage: e.target.value.trim() }))} placeholder="https://example.com/back.jpg" className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-[#b5a087] focus:border-transparent" />
                         </div>
                       </div>
-
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {[['Produkt Navn *', 'text', 'name'], ['Pris (kr) *', 'number', 'price'], ['Rabat (%)', 'number', 'discount']].map(([label, type, key]) => (
                           <div key={key}><label className="block text-sm font-semibold text-gray-700 mb-2">{label}</label><input type={type} value={(productForm as any)[key]} onChange={e => setProductForm(prev => ({ ...prev, [key]: e.target.value }))} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-[#b5a087] focus:border-transparent" /></div>
@@ -767,9 +805,7 @@ const AdminDashboard = () => {
                         <div><label className="block text-sm font-semibold text-gray-700 mb-2">Lagerstatus</label><select value={productForm.stockStatus} onChange={e => setProductForm(prev => ({ ...prev, stockStatus: e.target.value as "in_stock" | "out_of_stock" }))} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-[#b5a087]"><option value="in_stock">På lager</option><option value="out_of_stock">Udsolgt</option></select></div>
                         <div><label className="block text-sm font-semibold text-gray-700 mb-2">Status</label><select value={productForm.status} onChange={e => setProductForm(prev => ({ ...prev, status: e.target.value }))} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-[#b5a087]"><option value="active">Aktiv</option><option value="inactive">Inaktiv</option></select></div>
                       </div>
-
                       <div><label className="block text-sm font-semibold text-gray-700 mb-2">Beskrivelse</label><textarea value={productForm.description} onChange={e => setProductForm(prev => ({ ...prev, description: e.target.value }))} rows={4} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-[#b5a087]" /></div>
-
                       <div className="border-t pt-6 space-y-4">
                         <div>
                           <h4 className="text-lg font-bold mb-1">Dekorterings-område</h4>
@@ -780,7 +816,6 @@ const AdminDashboard = () => {
                           </div>
                         </div>
                       </div>
-
                       <div className="border-t pt-6">
                         <h4 className="text-lg font-bold mb-3">Mængderabatter</h4>
                         <div className="space-y-2">
@@ -794,7 +829,6 @@ const AdminDashboard = () => {
                           ))}
                         </div>
                       </div>
-
                       <div className="border-t pt-6">
                         <div className="mb-4"><h4 className="text-lg font-bold">Print-typer</h4><p className="text-sm text-gray-500 mt-0.5">Vælg hvilke print-metoder der er tilgængelige</p></div>
                         <div className="space-y-3">
@@ -821,7 +855,6 @@ const AdminDashboard = () => {
                           ))}
                         </div>
                       </div>
-
                       <div className="border-t pt-6">
                         <div className="flex justify-between mb-3"><h4 className="text-lg font-bold">Farver</h4><button type="button" onClick={() => setColors(prev => [...prev, { name: "", hex: "#000000", stock: 100, image_url: "" }])} className="text-sm text-[#b5a087] font-medium">+ Tilføj</button></div>
                         <div className="space-y-3">
@@ -842,7 +875,6 @@ const AdminDashboard = () => {
                           ))}
                         </div>
                       </div>
-
                       <div className="border-t pt-6">
                         <div className="flex justify-between mb-3"><h4 className="text-lg font-bold">Størrelser</h4><button type="button" onClick={() => setSizes(prev => [...prev, { name: "", stock: 100 }])} className="text-sm text-[#b5a087] font-medium">+ Tilføj</button></div>
                         <div className="space-y-2">
@@ -854,7 +886,6 @@ const AdminDashboard = () => {
                           ))}
                         </div>
                       </div>
-
                       <div className="border-t pt-6">
                         <div className="flex justify-between mb-3"><h4 className="text-lg font-bold">Produktinformation</h4><button type="button" onClick={() => setFeatures(prev => [...prev, ""])} className="text-sm text-[#b5a087] font-medium">+ Tilføj</button></div>
                         <div className="space-y-2">
@@ -866,7 +897,6 @@ const AdminDashboard = () => {
                           ))}
                         </div>
                       </div>
-
                       <div className="flex gap-3 pt-4 border-t">
                         <button onClick={handleSaveProduct} disabled={loading} className="flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50 font-medium"><Save className="w-5 h-5" />{loading ? 'Gemmer...' : 'Gem Produkt'}</button>
                         <button onClick={() => resetForm(true)} className="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition font-medium">Annuller</button>
@@ -874,7 +904,6 @@ const AdminDashboard = () => {
                     </div>
                   </div>
                 )}
-
                 <div className="relative mb-4"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" /><input type="search" placeholder="Søg produkter..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-[#b5a087]" /></div>
                 <div className="overflow-x-auto">
                   <table className="w-full">
