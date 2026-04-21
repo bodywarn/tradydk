@@ -335,7 +335,7 @@ const buildFakturaHtml = ({ sessionId, customerEmail, customerName, amountTotal,
               <div class="party">
                 <h4>Sælger</h4>
                 <strong>TRADYDK</strong>
-                <p>CVR: [DIT CVR NR]<br>support@tradydk.dk<br>tradydk.dk</p>
+                <p><br>support@tradydk.dk<br>tradydk.dk</p>
               </div>
               <div class="party">
                 <h4>Køber</h4>
