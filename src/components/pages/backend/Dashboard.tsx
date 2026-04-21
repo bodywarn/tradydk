@@ -60,7 +60,6 @@ const formatOrderNumber = (sessionId: string, createdAt: string) => {
   return `ORD-${new Date(createdAt).getFullYear()}-${clean.slice(0, 8).toUpperCase()}`;
 };
 
-// ─── DECORATION AREA EDITOR ────────────────────────────────────────────────
 const DecorationAreaEditor = ({ label, area, previewImage, onChange }: {
   label: string; area: DecorationArea; previewImage: string; onChange: (area: DecorationArea) => void
 }) => {
@@ -95,7 +94,6 @@ const DecorationAreaEditor = ({ label, area, previewImage, onChange }: {
   )
 }
 
-// ─── DESIGN PREVIEW CARD (used inline in orders) ───────────────────────────
 const DesignPreviewCard = ({ custom, products, onApprove, onReject, onUpdateDelivery, setSuccess, setError, loadCustomizations, formatDate }: {
   custom: Customization; products: Product[];
   onApprove: (id: string) => void; onReject: (id: string) => void;
@@ -142,7 +140,6 @@ const DesignPreviewCard = ({ custom, products, onApprove, onReject, onUpdateDeli
         </span>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2">
-        {/* Preview */}
         <div className="bg-white flex flex-col" style={{ minHeight: '220px' }}>
           {hasBothSides && (
             <div className="flex gap-1 p-1.5 border-b border-gray-100">
@@ -214,7 +211,6 @@ const DesignPreviewCard = ({ custom, products, onApprove, onReject, onUpdateDeli
   )
 }
 
-// ─── STANDALONE DESIGN TAB (for designs without matching orders) ───────────
 const DesignTab = ({ customizations, products, handleApproveCustomization, handleRejectCustomization, loadCustomizations, setSuccess, setError, formatDate }: {
   customizations: Customization[]; products: Product[]
   handleApproveCustomization: (id: string) => void; handleRejectCustomization: (id: string) => void
@@ -262,7 +258,6 @@ const DesignTab = ({ customizations, products, handleApproveCustomization, handl
   )
 }
 
-// ─── MAIN DASHBOARD ────────────────────────────────────────────────────────
 const AdminDashboard = () => {
   const { logout, user } = useAuth()
   const navigate = useNavigate()
@@ -330,12 +325,9 @@ const AdminDashboard = () => {
     catch (err) { console.error(err) }
   }
 
-  // Get customizations that belong to a specific order (by sessionId or by email+approximate time)
   const getOrderCustomizations = (order: StripeOrder): Customization[] => {
-    // Primary: match by sessionId
     const bySession = customizations.filter(c => c.sessionId === order.sessionId)
     if (bySession.length > 0) return bySession
-    // Fallback: match by email within ±2 hours of order
     const orderTime = new Date(order.created_at).getTime()
     return customizations.filter(c => {
       if (c.user_email !== order.customerEmail) return false
@@ -638,7 +630,6 @@ const AdminDashboard = () => {
 
                           {isExpanded && (
                             <div className="p-5 border-t space-y-5">
-                              {/* Order badge */}
                               <div className="flex flex-wrap items-center gap-4 p-4 rounded-xl bg-gradient-to-r from-[#b5a087] to-[#b5a087] border text-white">
                                 <div className="flex-1 min-w-0">
                                   <p className="text-[10px] font-bold tracking-widest text-white uppercase mb-1">Ordre nummer</p>
@@ -654,7 +645,6 @@ const AdminDashboard = () => {
                                 </div>
                               </div>
 
-                              {/* Products */}
                               <div>
                                 <h4 className="font-semibold text-gray-700 mb-2 text-sm uppercase tracking-wide">Produkter</h4>
                                 <div className="space-y-2">
@@ -676,7 +666,6 @@ const AdminDashboard = () => {
                                 </div>
                               </div>
 
-                              {/* ── DESIGNS TILKNYTTET ORDREN ── */}
                               {orderCustomizations.length > 0 && (
                                 <div>
                                   <h4 className="font-semibold text-gray-700 mb-3 text-sm uppercase tracking-wide flex items-center gap-2">
@@ -718,7 +707,6 @@ const AdminDashboard = () => {
                                 </div>
                               )}
 
-                              {/* Status mails */}
                               <div className="space-y-3 pt-2 border-t">
                                 <h4 className="font-semibold text-gray-700 text-sm uppercase tracking-wide">Send status-mail</h4>
                                 <div className="grid gap-2 sm:grid-cols-2">
